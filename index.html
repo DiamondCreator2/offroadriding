@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -109,10 +108,12 @@
                 <!-- Rendered via JS -->
             </div>
 
-            <div id="brush-sizes" class="flex gap-1 md:gap-2 border-r border-white/30 pr-2 md:pr-4 mr-1 md:mr-2">
+            <div id="brush-sizes" class="flex gap-1 md:gap-2 border-r border-white/30 pr-2 md:pr-4 mr-1 md:mr-2 items-center">
                 <button onclick="setBrushSize(1)" id="size-1" class="size-btn active w-8 h-8 md:w-10 md:h-10 bg-gray-600 border-2 border-transparent rounded flex items-center justify-center text-[10px] md:text-xs font-bold text-white">1x</button>
                 <button onclick="setBrushSize(3)" id="size-3" class="size-btn w-8 h-8 md:w-10 md:h-10 bg-gray-600 border-2 border-transparent rounded flex items-center justify-center text-[10px] md:text-xs font-bold text-white">3x</button>
                 <button onclick="setBrushSize(5)" id="size-5" class="size-btn w-8 h-8 md:w-10 md:h-10 bg-gray-600 border-2 border-transparent rounded flex items-center justify-center text-[10px] md:text-xs font-bold text-white">5x</button>
+                <div class="w-px h-6 bg-white/30 mx-1 md:mx-2"></div>
+                <button onclick="toggleFillMode()" id="btn-fill" class="transition-all w-8 h-8 md:w-10 md:h-10 bg-indigo-900 hover:bg-indigo-700 border-2 border-transparent rounded flex items-center justify-center text-[10px] md:text-xs font-bold text-white">FILL</button>
             </div>
 
             <div id="editor-exit-btns" class="flex gap-2 md:gap-4">
@@ -182,7 +183,8 @@
         let editorInteractables = [];
         let currentBrush = 'grass';
         let brushSize = 1;
-        let editorCamX = 0, editorCamZ = 0;
+        let isFillMode = false; // New Fill Mode toggle
+        let editorCamX = 0, editorCamY = 0, editorCamZ = 0;
         let editorCamTheta = Math.PI / 4;
         let editorCamPhi = 0.6154;
         let isPainting = false;
@@ -196,6 +198,7 @@
         // Smart Drag Variables
         let dragStartX = null, dragStartY = null, dragStartZ = null;
         let dragStartMouseX = null, dragStartMouseY = null;
+        let dragStartNormal = null;
         let dragMode = null;
         let lastPaintX = null, lastPaintY = null, lastPaintZ = null; 
 
@@ -214,15 +217,30 @@
             'grass': { bg: '#5cd145', label: '', name: 'Grass (Dirt sides)' },
             'grass_full': { bg: '#48b033', label: '', name: 'Full Grass' },
             'dirt': { bg: '#a87747', label: '', name: 'Dirt (Click to stack)' },
-            'ramp': { bg: '#8b8b8b', label: '◢', name: 'Ramp (Ride up)' },
-            'ramp_jump': { bg: '#ff8c00', label: '◿', name: 'Jump Ramp (Launch)' },
+            'wood_planks': { bg: '#6b4226', label: '=', name: 'Wood Planks' },
+            'stone': { bg: '#888888', label: 'S', name: 'Solid Stone' },
+            'dark_stone': { bg: '#444444', label: 'D', name: 'Dark Stone' },
             'tree': { bg: '#2e8f2e', label: 'T', name: 'Tree' },
             'rock': { bg: '#888888', label: 'R', name: 'Rock' },
             'fence': { bg: '#734b2f', label: '#', name: 'Unbreakable Fence' },
             'fence_breakable': { bg: '#d2b48c', label: '#B', name: 'Breakable Fence' },
+            
+            // Customizable Material Ramps
+            'ramp_dirt': { bg: '#a87747', label: '◢', name: 'Dirt Ramp' },
+            'ramp_grass': { bg: '#5cd145', label: '◢', name: 'Grass Ramp' },
+            'ramp_wood': { bg: '#d2b48c', label: '◢', name: 'Wood Ramp' },
+            'ramp_rock': { bg: '#888888', label: '◢', name: 'Rock Ramp' },
+            'ramp_dark_stone': { bg: '#444444', label: '◢', name: 'Dark Stone Ramp' },
+            
+            'ramp_jump_dirt': { bg: '#a87747', label: '◿', name: 'Dirt Jump' },
+            'ramp_jump_grass': { bg: '#5cd145', label: '◿', name: 'Grass Jump' },
+            'ramp_jump_wood': { bg: '#ff8c00', label: '◿', name: 'Wood Jump' },
+            'ramp_jump_rock': { bg: '#888888', label: '◿', name: 'Rock Jump' },
+            'ramp_jump_dark_stone': { bg: '#444444', label: '◿', name: 'Dark Stone Jump' },
+            
             'erase': { bg: '#ef4444', label: 'X', name: 'Eraser (Remove block)' }
         };
-        let hotbarSlots = ['grass', 'grass_full', 'dirt', 'ramp', 'tree', 'erase'];
+        let hotbarSlots = ['grass', 'wood_planks', 'dark_stone', 'ramp_dark_stone', 'tree', 'erase'];
         let activeSlotIndex = 0;
         let inventoryOpen = false;
 
@@ -238,6 +256,28 @@
             riderHead: new THREE.BoxGeometry(0.5, 0.5, 0.5)
         };
 
+        // --- PROCEDURAL TEXTURE GENERATOR ---
+        function createTexture(type) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; canvas.height = 256; 
+            const ctx = canvas.getContext('2d');
+            
+            if (type === 'wood_planks') {
+                ctx.fillStyle = '#6b4226'; ctx.fillRect(0,0,256,256);
+                ctx.fillStyle = '#523019';
+                for(let i=0; i<8; i++) {
+                    ctx.fillRect(0, i*32 + 28, 256, 4); 
+                    for(let j=0; j<15; j++) ctx.fillRect(Math.random()*256, i*32 + Math.random()*24, Math.random()*60+20, 2);
+                }
+            }
+            
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = THREE.RepeatWrapping;
+            tex.wrapT = THREE.RepeatWrapping;
+            tex.magFilter = THREE.NearestFilter; 
+            return tex;
+        }
+
         const materials = {
             grass: new THREE.MeshLambertMaterial({ color: 0x5cd145 }),
             grassDark: new THREE.MeshLambertMaterial({ color: 0x48b033 }),
@@ -245,6 +285,9 @@
             rock: new THREE.MeshLambertMaterial({ color: 0x888888 }),
             wood: new THREE.MeshLambertMaterial({ color: 0x734b2f }), 
             woodLight: new THREE.MeshLambertMaterial({ color: 0xd2b48c }), 
+            woodPlanks: new THREE.MeshLambertMaterial({ map: createTexture('wood_planks') }),
+            stone: new THREE.MeshLambertMaterial({ color: 0x888888 }),
+            darkStone: new THREE.MeshLambertMaterial({ color: 0x444444 }),
             leaves: new THREE.MeshLambertMaterial({ color: 0x2e8f2e }),
             bikeRed: new THREE.MeshLambertMaterial({ color: 0xe63946 }),
             atvYellow: new THREE.MeshLambertMaterial({ color: 0xffcc00 }),
@@ -258,6 +301,16 @@
 
         const grassMats = [materials.dirt, materials.dirt, materials.grass, materials.dirt, materials.dirt, materials.dirt];
         const grassDarkMats = [materials.dirt, materials.dirt, materials.grassDark, materials.dirt, materials.dirt, materials.dirt];
+
+        // --- RAMP MATERIAL HELPER ---
+        function getRampMaterial(type, x = 0, z = 0) {
+            if (type.includes('grass')) return ((x + z) % 2 === 0) ? materials.grass : materials.grassDark;
+            if (type.includes('wood')) return materials.woodLight;
+            if (type.includes('rock')) return materials.rock;
+            if (type.includes('dark_stone')) return materials.darkStone;
+            if (type.includes('stone')) return materials.stone;
+            return materials.dirt;
+        }
 
         // --- ICON GENERATOR ---
         function generateItemIcons() {
@@ -283,8 +336,10 @@
                 if (id === 'grass') mesh = new THREE.Mesh(geometries.box, grassMats);
                 else if (id === 'grass_full') mesh = new THREE.Mesh(geometries.box, materials.grass);
                 else if (id === 'dirt') mesh = new THREE.Mesh(geometries.box, materials.dirt);
-                else if (id === 'ramp') mesh = createRamp(materials.dirt, 'ramp');
-                else if (id === 'ramp_jump') mesh = createRamp(materials.woodLight, 'ramp_jump');
+                else if (id === 'wood_planks') mesh = new THREE.Mesh(geometries.box, materials.woodPlanks);
+                else if (id === 'stone') mesh = new THREE.Mesh(geometries.box, materials.stone);
+                else if (id === 'dark_stone') mesh = new THREE.Mesh(geometries.box, materials.darkStone);
+                else if (id.includes('ramp')) mesh = createRamp(getRampMaterial(id, 0, 0), id);
                 else if (id === 'tree') mesh = createTree();
                 else if (id === 'rock') mesh = createRock();
                 else if (id === 'fence') mesh = createFence({n:false, s:false, e:false, w:false}, 0, false);
@@ -343,13 +398,13 @@
             dirLight.shadow.bias = -0.001; 
             scene.add(dirLight);
 
-            const planeGeo = new THREE.PlaneGeometry(1000, 1000);
+            const planeGeo = new THREE.PlaneGeometry(100000, 100000);
             planeGeo.rotateX(-Math.PI / 2);
             intersectPlane = new THREE.Mesh(planeGeo, new THREE.MeshBasicMaterial({ visible: false }));
             intersectPlane.position.y = -0.5; 
             scene.add(intersectPlane);
 
-            gridHelper = new THREE.GridHelper(60, 60, 0xffffff, 0xffffff);
+            gridHelper = new THREE.GridHelper(400, 400, 0xffffff, 0xffffff);
             gridHelper.position.y = 0.52; 
             gridHelper.material.opacity = 0.2;
             gridHelper.material.transparent = true;
@@ -384,6 +439,18 @@
             else ui.inventoryPanel.classList.add('hidden');
         }
 
+        function toggleFillMode() {
+            isFillMode = !isFillMode;
+            const btn = document.getElementById('btn-fill');
+            if (isFillMode) {
+                btn.classList.remove('bg-indigo-900', 'border-transparent');
+                btn.classList.add('bg-indigo-500', 'border-white', 'shadow-[0_0_15px_rgba(255,255,255,0.8)]');
+            } else {
+                btn.classList.add('bg-indigo-900', 'border-transparent');
+                btn.classList.remove('bg-indigo-500', 'border-white', 'shadow-[0_0_15px_rgba(255,255,255,0.8)]');
+            }
+        }
+
         // --- FIRST PERSON TOGGLE ---
         function enterFirstPerson() {
             isFirstPerson = true;
@@ -396,7 +463,7 @@
             ui.inventoryPanel.classList.add('hidden'); inventoryOpen = false;
             
             fpX = editorCamX; fpZ = editorCamZ; 
-            fpY = getTerrainHeight(fpX, fpZ, 20) + 1.6;
+            fpY = getTerrainHeight(fpX, fpZ, 128) + 1.6;
             if (fpY < 0) fpY = 5; 
             
             fpYaw = editorCamTheta;
@@ -419,7 +486,7 @@
             document.getElementById('editor-exit-btns').classList.remove('hidden');
             ui.inventoryPanel.classList.add('hidden'); inventoryOpen = false;
             
-            editorCamX = fpX; editorCamZ = fpZ;
+            editorCamX = fpX; editorCamY = fpY; editorCamZ = fpZ;
             editorCamTheta = fpYaw;
             camera.rotation.order = 'XYZ'; 
         }
@@ -597,7 +664,7 @@
                 hood.position.set(0, 0.8, 0.4); hood.rotation.x = 0.2; hood.castShadow = true; wrapper.add(hood);
 
                 const tank = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.2, 0.3), materials.black);
-                tank.position.set(0, 0.82, 0.1); tank.castShadow = true; wrapper.add(tank);
+                tank.position.set(0, 0.82, 0.1); castShadow = true; wrapper.add(tank);
 
                 const fenderBridgeF = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.05, 0.3), materials.black);
                 fenderBridgeF.position.set(0, 0.63, 0.45); fenderBridgeF.rotation.x = 0.1; wrapper.add(fenderBridgeF);
@@ -690,12 +757,29 @@
             return group;
         }
 
-        function createRamp(mat = materials.dirt, type = 'ramp') {
+        // Morph box to form a stretched, cornered ramp based on neighbors and chain index!
+        function createRamp(mat = materials.dirt, type = 'ramp', corners = [1, 1, 0, 0], bottomH = 0, topH = 1, isLast = true) {
             const rampGeo = new THREE.BoxGeometry(1, 1, 1);
             const pos = rampGeo.attributes.position;
+            
             for(let i=0; i<pos.count; i++) {
-                if(pos.getY(i) > 0.1 && pos.getZ(i) > 0.1) pos.setY(i, -0.5);
-                if(type === 'ramp_jump' && pos.getY(i) > 0.1 && pos.getZ(i) < -0.1) pos.setY(i, 0.2);
+                if(pos.getY(i) > 0.1) {
+                    let px = pos.getX(i);
+                    let pz = pos.getZ(i);
+                    
+                    let hIndex = 0;
+                    if (px < 0 && pz < 0) hIndex = 0; // Local NW
+                    else if (px > 0 && pz < 0) hIndex = 1; // Local NE
+                    else if (px < 0 && pz > 0) hIndex = 2; // Local SW
+                    else if (px > 0 && pz > 0) hIndex = 3; // Local SE
+                    
+                    let isHigh = corners[hIndex];
+                    let finalH = bottomH + (topH - bottomH) * isHigh;
+                    
+                    let kick = (type.includes('ramp_jump') && isLast && isHigh) ? 0.2 : 0;
+                    
+                    pos.setY(i, -0.5 + finalH + kick);
+                }
             }
             rampGeo.computeVertexNormals();
             const mesh = new THREE.Mesh(rampGeo, mat);
@@ -852,7 +936,7 @@
             }
             scene.add(intersectPlane);
             scene.add(gridHelper);
-            editorCamX = 0; editorCamZ = 0;
+            editorCamX = 0; editorCamY = 0; editorCamZ = 0;
             editorCamTheta = Math.PI / 4; editorCamPhi = 0.6154;
             if (playerGroup) playerGroup.visible = false;
             updateInteractables();
@@ -883,6 +967,118 @@
             }
         }
 
+        // Dynamically chains consecutive ramps (horizontally and vertically) and forms perfect Minecraft-style corners
+        function updateRampChain(startX, startY, startZ) {
+            let cell = editorData.get(`${startX},${startY},${startZ}`);
+            if (!cell || !cell.type.includes('ramp')) return;
+            
+            let rot = cell.rotation;
+            let type = cell.type;
+            let dx = 0, dz = 0;
+            if (rot === 0) dz = -1; // Climbs North
+            else if (rot === 1) dx = -1; // Climbs West
+            else if (rot === 2) dz = 1; // Climbs South
+            else if (rot === 3) dx = 1; // Climbs East
+
+            const hasRamp = (x, y, z) => {
+                let c = editorData.get(`${x},${y},${z}`);
+                return c && c.type === type && c.rotation === rot;
+            };
+
+            // Traverse backward down the 3D chain
+            let cx = startX, cy = startY, cz = startZ;
+            let sanity = 0;
+            while(sanity++ < 1000) {
+                if (hasRamp(cx, cy-1, cz)) { cy--; }
+                else if (hasRamp(cx-dx, cy-1, cz-dz)) { cx-=dx; cy--; cz-=dz; }
+                else if (hasRamp(cx-dx, cy, cz-dz)) { cx-=dx; cz-=dz; }
+                else break;
+            }
+
+            // Traverse forward up the 3D chain to collect the entire sequence
+            let chain = [];
+            sanity = 0;
+            while(sanity++ < 1000) {
+                let cCell = editorData.get(`${cx},${cy},${cz}`);
+                if (cCell && cCell.type === type && cCell.rotation === rot) {
+                    chain.push({x: cx, y: cy, z: cz, cell: cCell});
+                } else break; 
+
+                if (hasRamp(cx, cy+1, cz)) { cy++; }
+                else if (hasRamp(cx+dx, cy+1, cz+dz)) { cx+=dx; cy++; cz+=dz; }
+                else if (hasRamp(cx+dx, cy, cz+dz)) { cx+=dx; cz+=dz; }
+                else break;
+            }
+
+            let L = chain.length;
+            if (L === 0) return;
+
+            let minRise = chain[0].y;
+            let maxRise = chain[L-1].y;
+            let x0 = chain[0].x, z0 = chain[0].z;
+            let TotalRun = Math.abs((chain[L-1].x - x0) + (chain[L-1].z - z0)) + 1;
+            let TotalRise = (maxRise - minRise) + 1;
+
+            for (let i = 0; i < L; i++) {
+                let item = chain[i];
+                let dRun = Math.abs((item.x - x0) + (item.z - z0));
+                
+                // Perfectly map this block's local height into the global slope
+                let bottomH = (dRun / TotalRun) * TotalRise + minRise - item.y;
+                let topH = ((dRun + 1) / TotalRun) * TotalRise + minRise - item.y;
+                
+                let isLast = (i === L - 1);
+                let isFirst = (i === 0);
+                
+                // Determine Minecraft-style corner shapes based on purely horizontal neighbors (same Y)
+                let localCorners = [1, 1, 0, 0];
+                
+                let backCell = editorData.get(`${item.x - dx},${item.y},${item.z - dz}`);
+                let frontCell = editorData.get(`${item.x + dx},${item.y},${item.z + dz}`);
+                
+                let bRot = backCell && backCell.type.includes('ramp') ? backCell.rotation : -1;
+                let fRot = frontCell && frontCell.type.includes('ramp') ? frontCell.rotation : -1;
+                
+                if (isFirst && bRot !== -1 && bRot !== rot && ((bRot + 2) % 4) !== rot) {
+                    let relBRot = (bRot - rot + 4) % 4;
+                    if (relBRot === 1) localCorners = [1, 1, 1, 0]; // Inner Left
+                    else if (relBRot === 3) localCorners = [1, 1, 0, 1]; // Inner Right
+                } 
+                else if (isLast && fRot !== -1 && fRot !== rot && ((fRot + 2) % 4) !== rot) {
+                    let relFRot = (fRot - rot + 4) % 4;
+                    if (relFRot === 1) localCorners = [1, 0, 0, 0]; // Outer Right
+                    else if (relFRot === 3) localCorners = [0, 1, 0, 0]; // Outer Left
+                }
+                
+                if (item.cell.mesh) {
+                    scene.remove(item.cell.mesh);
+                    if (item.cell.mesh.geometry) item.cell.mesh.geometry.dispose();
+                }
+                
+                let mat = getRampMaterial(item.cell.type, item.x, item.z);
+                let newMesh = createRamp(mat, item.cell.type, localCorners, bottomH, topH, isLast);
+                newMesh.rotation.y = rot * (Math.PI / 2);
+                newMesh.position.set(item.x + 0.5, item.y, item.z + 0.5);
+                scene.add(newMesh);
+                
+                item.cell.mesh = newMesh;
+                item.cell.bottomH = bottomH;
+                item.cell.topH = topH;
+                item.cell.isLast = isLast;
+                item.cell.localCorners = localCorners; 
+            }
+        }
+
+        function triggerRampUpdates(x, y, z) {
+            for(let dy=-1; dy<=1; dy++) {
+                for(let dx=-1; dx<=1; dx++) {
+                    for(let dz=-1; dz<=1; dz++) {
+                        updateRampChain(x+dx, y+dy, z+dz);
+                    }
+                }
+            }
+        }
+
         function restoreBrokenFences() {
             let fencesToRestore = [];
             for (const [key, cell] of editorData.entries()) {
@@ -901,8 +1097,8 @@
             }
         }
 
-        function paintCell3D(x, y, z, removeTarget) {
-            if (Math.abs(x) > 30 || Math.abs(z) > 30 || y < 0 || y > 20) return;
+        function paintCell3D(x, y, z, removeTarget, skipUpdates = false) {
+            if (y < 0 || y > 128) return;
             const key = `${x},${y},${z}`;
             
             let cell = editorData.get(key);
@@ -915,10 +1111,17 @@
                 if (cell) {
                     if (cell.mesh) scene.remove(cell.mesh);
                     let wasFence = cell.type.includes('fence');
+                    let wasRamp = cell.type.includes('ramp');
                     editorData.delete(key);
-                    if (wasFence) {
-                        updateEditorFence(x, y, z - 1); updateEditorFence(x, y, z + 1);
-                        updateEditorFence(x - 1, y, z); updateEditorFence(x + 1, y, z);
+                    
+                    if (!skipUpdates) {
+                        if (wasFence) {
+                            updateEditorFence(x, y, z - 1); updateEditorFence(x, y, z + 1);
+                            updateEditorFence(x - 1, y, z); updateEditorFence(x + 1, y, z);
+                        }
+                        if (wasRamp) {
+                            triggerRampUpdates(x, y, z);
+                        }
                     }
                 }
                 return;
@@ -930,9 +1133,13 @@
             }
 
             let mesh;
-            if (currentBrush === 'grass' || currentBrush === 'dirt' || currentBrush === 'grass_full') {
+            const solidBlocks = ['grass', 'grass_full', 'dirt', 'wood_planks', 'stone', 'dark_stone'];
+            if (solidBlocks.includes(currentBrush)) {
                 let mat;
                 if (currentBrush === 'dirt') mat = materials.dirt;
+                else if (currentBrush === 'wood_planks') mat = materials.woodPlanks;
+                else if (currentBrush === 'stone') mat = materials.stone;
+                else if (currentBrush === 'dark_stone') mat = materials.darkStone;
                 else if (currentBrush === 'grass_full') mat = ((x + z) % 2 === 0 ? materials.grass : materials.grassDark);
                 else mat = ((x + z) % 2 === 0 ? grassMats : grassDarkMats);
                 mesh = new THREE.Mesh(geometries.box, mat);
@@ -940,8 +1147,8 @@
                 mesh = createTree(); 
             } else if (currentBrush === 'rock') {
                 mesh = createRock();
-            } else if (currentBrush === 'ramp' || currentBrush === 'ramp_jump') {
-                let mat = currentBrush === 'ramp' ? materials.dirt : materials.woodLight;
+            } else if (currentBrush.includes('ramp')) {
+                let mat = getRampMaterial(currentBrush, x, z);
                 mesh = createRamp(mat, currentBrush);
             }
             
@@ -953,12 +1160,14 @@
                 scene.add(mesh);
             }
             
-            if (currentBrush.includes('fence')) {
-                updateEditorFence(x, y, z);
-                updateEditorFence(x, y, z - 1); updateEditorFence(x, y, z + 1);
-                updateEditorFence(x - 1, y, z); updateEditorFence(x + 1, y, z);
-            } else if (currentBrush === 'ramp' || currentBrush === 'ramp_jump') {
-                mesh.rotation.y = 0;
+            if (!skipUpdates) {
+                if (currentBrush.includes('fence')) {
+                    updateEditorFence(x, y, z);
+                    updateEditorFence(x, y, z - 1); updateEditorFence(x, y, z + 1);
+                    updateEditorFence(x - 1, y, z); updateEditorFence(x + 1, y, z);
+                } else if (currentBrush.includes('ramp')) {
+                    triggerRampUpdates(x, y, z);
+                }
             }
         }
 
@@ -981,6 +1190,7 @@
             let targetX, targetY, targetZ;
             let removeTarget = false;
             let validHit = false;
+            let hitNormal = new THREE.Vector3(0, 1, 0);
 
             // --- SMART DRAG LOGIC (Isometric Mode Only) ---
             if (!isFirstPerson && !isClick) {
@@ -990,8 +1200,21 @@
                     let dx = e.clientX - dragStartMouseX;
                     let dy = e.clientY - dragStartMouseY;
                     if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
-                        if (Math.abs(dy) > Math.abs(dx) * 1.5) dragMode = 'VERTICAL'; 
-                        else dragMode = 'HORIZONTAL'; 
+                        let isVerticalMotion = Math.abs(dy) > Math.abs(dx) * 1.5;
+                        
+                        if (isVerticalMotion) {
+                            if (dy < 0) {
+                                dragMode = 'VERTICAL'; 
+                            } else {
+                                if (dragStartNormal && dragStartNormal.y < 0.5) {
+                                    dragMode = 'VERTICAL'; 
+                                } else {
+                                    dragMode = 'HORIZONTAL'; 
+                                }
+                            }
+                        } else {
+                            dragMode = 'HORIZONTAL'; 
+                        }
                     } else {
                         return; 
                     }
@@ -1018,7 +1241,7 @@
                         targetY = Math.round(hitPoint.y);
                         targetZ = dragStartZ;
                         if (targetY < 0) targetY = 0;
-                        if (targetY > 20) targetY = 20;
+                        if (targetY > 128) targetY = 128;
                         validHit = true;
                         if (currentBrush === 'erase') removeTarget = true;
                     } else {
@@ -1029,39 +1252,55 @@
 
             // --- STANDARD SCENE INTERSECTION ---
             if (!validHit) {
-                const intersects = raycaster.intersectObjects(editorInteractables);
+                const intersects = raycaster.intersectObjects(editorInteractables, true);
                 if (intersects.length > 0) {
                     if (isFirstPerson && intersects[0].distance > 15) return; 
 
                     let hit = intersects[0];
+                    
+                    let rootObj = hit.object;
+                    while (rootObj.parent && rootObj.parent !== scene) {
+                        rootObj = rootObj.parent;
+                    }
+
                     if (currentBrush === 'erase') {
                         if (hit.object === intersectPlane) return; 
-                        targetX = Math.floor(hit.object.position.x);
-                        targetY = Math.round(hit.object.position.y);
-                        targetZ = Math.floor(hit.object.position.z);
+                        targetX = Math.floor(rootObj.position.x);
+                        targetY = Math.round(rootObj.position.y);
+                        targetZ = Math.floor(rootObj.position.z);
                         removeTarget = true;
+                        
+                        let normal = hit.face.normal.clone();
+                        let normalMatrix = new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld);
+                        normal.applyMatrix3(normalMatrix).normalize();
+                        hitNormal.copy(normal);
                     } else {
                         if (hit.object === intersectPlane) {
                             targetX = Math.floor(hit.point.x);
                             targetY = 0; 
                             targetZ = Math.floor(hit.point.z);
+                            hitNormal.set(0, 1, 0);
                         } else {
-                            let hx = Math.floor(hit.object.position.x);
-                            let hy = Math.round(hit.object.position.y);
-                            let hz = Math.floor(hit.object.position.z);
+                            let hx = Math.floor(rootObj.position.x);
+                            let hy = Math.round(rootObj.position.y);
+                            let hz = Math.floor(rootObj.position.z);
                             let hitCell = editorData.get(`${hx},${hy},${hz}`);
 
-                            if (isClick && hitCell && (hitCell.type === currentBrush) && ['fence', 'fence_breakable', 'ramp', 'ramp_jump'].includes(currentBrush)) {
-                                let maxRot = (currentBrush === 'ramp' || currentBrush === 'ramp_jump') ? 4 : 2;
+                            if (isClick && hitCell && (hitCell.type === currentBrush) && (currentBrush.includes('fence') || currentBrush.includes('ramp'))) {
+                                let maxRot = currentBrush.includes('ramp') ? 4 : 2;
                                 hitCell.rotation = (hitCell.rotation + 1) % maxRot;
                                 if (currentBrush.includes('fence')) updateEditorFence(hx, hy, hz);
-                                else hitCell.mesh.rotation.y = hitCell.rotation * (Math.PI / 2);
+                                else {
+                                    hitCell.mesh.rotation.y = hitCell.rotation * (Math.PI / 2);
+                                    triggerRampUpdates(hx, hy, hz);
+                                }
                                 return;
                             }
 
                             let normal = hit.face.normal.clone();
                             let normalMatrix = new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld);
                             normal.applyMatrix3(normalMatrix).normalize();
+                            hitNormal.copy(normal);
                             
                             let nx = Math.abs(normal.x) > 0.5 ? Math.sign(normal.x) : 0;
                             let ny = Math.abs(normal.y) > 0.5 ? Math.sign(normal.y) : 0;
@@ -1070,10 +1309,14 @@
                             targetX = hx + nx;
                             targetY = hy + ny;
                             targetZ = hz + nz;
-                            if (targetY < 0 || targetY > 20) return;
+                            if (targetY < 0 || targetY > 128) return;
                         }
                     }
                     
+                    if (!isFirstPerson && !isClick && dragMode === 'VERTICAL') {
+                        if (targetX !== dragStartX || targetZ !== dragStartZ) return;
+                    }
+
                     validHit = true;
                 }
             }
@@ -1085,9 +1328,67 @@
                     dragStartZ = targetZ;
                     dragStartMouseX = e.clientX;
                     dragStartMouseY = e.clientY;
+                    dragStartNormal = hitNormal.clone();
                     dragMode = null;
                 }
 
+                // --- FILL MODE LOGIC ---
+                if (isFillMode) {
+                    if (!isClick) return; 
+
+                    let targetCellKey = `${targetX},${targetY},${targetZ}`;
+                    let targetCell = editorData.get(targetCellKey);
+                    let targetCellType = targetCell ? targetCell.type : null;
+                    
+                    if (currentBrush !== 'erase' && targetCellType === currentBrush) return;
+                    if (currentBrush === 'erase' && targetCellType === null) return;
+                    
+                    let queue = [{x: targetX, z: targetZ}];
+                    let qIdx = 0;
+                    let visited = new Set();
+                    let painted = 0;
+                    const MAX_FILL = 4000;
+                    
+                    while (qIdx < queue.length && painted < MAX_FILL) {
+                        let curr = queue[qIdx++];
+                        let key = `${curr.x},${targetY},${curr.z}`;
+                        
+                        if (visited.has(key)) continue;
+                        visited.add(key);
+                        
+                        if (Math.abs(curr.x) > 200 || Math.abs(curr.z) > 200) continue; 
+                        
+                        let c = editorData.get(key);
+                        let cType = c ? c.type : null;
+                        
+                        if (cType !== targetCellType) continue; 
+                        
+                        paintCell3D(curr.x, targetY, curr.z, removeTarget, true);
+                        painted++;
+                        
+                        queue.push({x: curr.x + 1, z: curr.z});
+                        queue.push({x: curr.x - 1, z: curr.z});
+                        queue.push({x: curr.x, z: curr.z + 1});
+                        queue.push({x: curr.x, z: curr.z - 1});
+                    }
+                    
+                    if (painted > 0) {
+                        if (currentStroke) {
+                            let affected = Array.from(currentStroke.keys());
+                            for (let key of affected) {
+                                let [ax, ay, az] = key.split(',').map(Number);
+                                updateEditorFence(ax, ay, az);
+                                updateEditorFence(ax, ay, az - 1); updateEditorFence(ax, ay, az + 1);
+                                updateEditorFence(ax - 1, ay, az); updateEditorFence(ax + 1, ay, az);
+                                triggerRampUpdates(ax, ay, az);
+                            }
+                        }
+                        updateInteractables();
+                    }
+                    return; 
+                }
+
+                // --- NORMAL DRAG DRAWING ---
                 let points = [];
                 if (!isClick && dragMode === 'VERTICAL' && lastPaintY !== null) {
                     let step = Math.sign(targetY - lastPaintY) || 1;
@@ -1137,6 +1438,7 @@
             if (gameState !== 'EDITOR' || undoStack.length === 0) return;
             const lastStroke = undoStack.pop();
             const fencesToUpdate = new Set();
+            const rampsToUpdate = new Set();
 
             for (const [key, oldData] of lastStroke.entries()) {
                 const [x, y, z] = key.split(',').map(Number);
@@ -1149,22 +1451,42 @@
                         fencesToUpdate.add(`${x},${y},${z-1}`); fencesToUpdate.add(`${x},${y},${z+1}`);
                         fencesToUpdate.add(`${x-1},${y},${z}`); fencesToUpdate.add(`${x+1},${y},${z}`);
                     }
+                    if (cell.type.includes('ramp')) {
+                        for(let dy=-1; dy<=1; dy++) {
+                            for(let dx=-1; dx<=1; dx++) {
+                                for(let dz=-1; dz<=1; dz++) {
+                                    rampsToUpdate.add(`${x+dx},${y+dy},${z+dz}`);
+                                }
+                            }
+                        }
+                    }
                     editorData.delete(key);
                 }
 
                 if (oldData) {
                     let mesh;
-                    if (oldData.type === 'grass' || oldData.type === 'dirt' || oldData.type === 'grass_full') {
+                    const solidBlocks = ['grass', 'grass_full', 'dirt', 'wood_planks', 'stone', 'dark_stone'];
+                    if (solidBlocks.includes(oldData.type)) {
                         let mat;
                         if (oldData.type === 'dirt') mat = materials.dirt;
+                        else if (oldData.type === 'wood_planks') mat = materials.woodPlanks;
+                        else if (oldData.type === 'stone') mat = materials.stone;
+                        else if (oldData.type === 'dark_stone') mat = materials.darkStone;
                         else if (oldData.type === 'grass_full') mat = ((x + z) % 2 === 0 ? materials.grass : materials.grassDark);
                         else mat = ((x + z) % 2 === 0 ? grassMats : grassDarkMats);
                         mesh = new THREE.Mesh(geometries.box, mat);
                     } else if (oldData.type === 'tree') { mesh = createTree(); }
                     else if (oldData.type === 'rock') { mesh = createRock(); }
-                    else if (oldData.type === 'ramp' || oldData.type === 'ramp_jump') {
-                        let mat = oldData.type === 'ramp' ? materials.dirt : materials.woodLight;
-                        mesh = createRamp(mat, oldData.type);
+                    else if (oldData.type.includes('ramp')) {
+                        let mat = getRampMaterial(oldData.type, x, z);
+                        mesh = createRamp(mat, oldData.type); 
+                        for(let dy=-1; dy<=1; dy++) {
+                            for(let dx=-1; dx<=1; dx++) {
+                                for(let dz=-1; dz<=1; dz++) {
+                                    rampsToUpdate.add(`${x+dx},${y+dy},${z+dz}`);
+                                }
+                            }
+                        }
                     } else if (oldData.type.includes('fence')) {
                         fencesToUpdate.add(`${x},${y},${z}`);
                         fencesToUpdate.add(`${x},${y},${z-1}`); fencesToUpdate.add(`${x},${y},${z+1}`);
@@ -1184,6 +1506,10 @@
             for (const fKey of fencesToUpdate) {
                 const [fx, fy, fz] = fKey.split(',').map(Number);
                 updateEditorFence(fx, fy, fz);
+            }
+            for (const rKey of rampsToUpdate) {
+                const [rx, ry, rz] = rKey.split(',').map(Number);
+                updateRampChain(rx, ry, rz);
             }
             updateInteractables();
         }
@@ -1326,6 +1652,7 @@
                 lastPaintedCell = null;
                 dragStartX = null; dragStartY = null; dragStartZ = null;
                 dragStartMouseX = null; dragStartMouseY = null;
+                dragStartNormal = null;
                 dragMode = null;
                 lastPaintX = null; lastPaintY = null; lastPaintZ = null;
             });
@@ -1339,7 +1666,7 @@
         }
 
         // --- PHYSICS & TERRAIN LOGIC ---
-        function getTerrainHeight(x, z, maxY = 20) {
+        function getTerrainHeight(x, z, maxY = 128) {
             if (gameState === 'SANDBOX' || gameState === 'ENDLESS') {
                 return 0.5; 
             }
@@ -1347,11 +1674,12 @@
             let highestY = -1;
             let topBlock = null;
             
-            let startY = Math.min(20, Math.floor(maxY + 1.5));
+            let startY = Math.min(128, Math.floor(maxY + 1.5));
             
             for (let y = startY; y >= 0; y--) {
                 let cell = editorData.get(`${cx},${y},${cz}`);
-                if (cell && ['grass', 'grass_full', 'dirt', 'ramp', 'ramp_jump'].includes(cell.type)) {
+                const solidBlocks = ['grass', 'grass_full', 'dirt', 'wood_planks', 'stone', 'dark_stone'];
+                if (cell && (solidBlocks.includes(cell.type) || cell.type.includes('ramp'))) {
                     highestY = y; topBlock = cell; break;
                 }
             }
@@ -1360,14 +1688,37 @@
 
             let baseTopY = highestY + 0.5;
 
-            if (topBlock && (topBlock.type === 'ramp' || topBlock.type === 'ramp_jump')) {
-                let lx = x - cx - 0.5; let lz = z - cz - 0.5; let rampAdded = 0;
-                if (topBlock.rotation === 0) rampAdded = 0.5 - lz;       
-                else if (topBlock.rotation === 1) rampAdded = 0.5 - lx;  
-                else if (topBlock.rotation === 2) rampAdded = lz + 0.5;  
-                else if (topBlock.rotation === 3) rampAdded = lx + 0.5;  
+            if (topBlock && topBlock.type.includes('ramp')) {
+                let lx = x - cx - 0.5; let lz = z - cz - 0.5; 
                 
-                if (topBlock.type === 'ramp_jump') rampAdded *= 0.7; 
+                // Map the world coordinates to the internal un-rotated local space of the ramp block
+                let localX = lx, localZ = lz;
+                if (topBlock.rotation === 1) { localX = -lz; localZ = lx; }
+                else if (topBlock.rotation === 2) { localX = -lx; localZ = -lz; }
+                else if (topBlock.rotation === 3) { localX = lz; localZ = -lx; }
+                
+                // Convert coordinates into normalized 0-to-1 UV maps (0,0 is NW, 1,1 is SE)
+                let u = localX + 0.5;
+                let v = localZ + 0.5;
+                
+                let corners = topBlock.localCorners || [1, 1, 0, 0];
+                let NW = corners[0], NE = corners[1], SW = corners[2], SE = corners[3];
+                
+                // Bilinear interpolation precisely models the twisted shape of corner ramps
+                let t_North = NW * (1 - u) + NE * u;
+                let t_South = SW * (1 - u) + SE * u;
+                let t = t_North * (1 - v) + t_South * v;
+                
+                let bottomH = topBlock.bottomH !== undefined ? topBlock.bottomH : 0;
+                let topH = topBlock.topH !== undefined ? topBlock.topH : 1;
+                
+                let rampAdded = bottomH + t * (topH - bottomH);
+                
+                if (topBlock.type.includes('ramp_jump') && topBlock.isLast !== false) {
+                    if (t > 0.8) {
+                        rampAdded += (t - 0.8) * 5 * 0.2; 
+                    }
+                }
 
                 return baseTopY - 1.0 + rampAdded;
             }
@@ -1463,7 +1814,7 @@
                 speed = 0; angle = Math.PI; 
                 createPlayer(); 
                 
-                let startY = getTerrainHeight(0, 0, 20); 
+                let startY = getTerrainHeight(0, 0, 128); 
                 if(startY < -5) startY = 1;
                 playerGroup.position.set(0, startY, 0);
                 if (!animationId) animate();
@@ -1493,6 +1844,14 @@
             }
 
             if (gameState === 'EDITOR') {
+                if (!isFirstPerson) {
+                    gridHelper.position.x = Math.round(editorCamX);
+                    gridHelper.position.z = Math.round(editorCamZ);
+                } else {
+                    gridHelper.position.x = Math.round(fpX);
+                    gridHelper.position.z = Math.round(fpZ);
+                }
+
                 if (isFirstPerson) {
                     let moveSpeed = isFlying ? 0.25 : 0.12;
                     if (keys.space && isFlying) moveSpeed *= 2; 
@@ -1563,28 +1922,34 @@
                     if (keys.spinLeft) editorCamTheta -= 0.05;
                     if (keys.spinRight) editorCamTheta += 0.05;
 
-                    let moveX = 0; let moveZ = 0;
+                    let moveX = 0; let moveZ = 0; let moveY = 0;
                     let panSpeed = 0.5;
                     if (keys.forward) { moveX -= Math.sin(editorCamTheta); moveZ -= Math.cos(editorCamTheta); }
                     if (keys.backward) { moveX += Math.sin(editorCamTheta); moveZ += Math.cos(editorCamTheta); }
                     if (keys.left) { moveX -= Math.cos(editorCamTheta); moveZ += Math.sin(editorCamTheta); }
                     if (keys.right) { moveX += Math.cos(editorCamTheta); moveZ -= Math.sin(editorCamTheta); }
+                    if (keys.space) moveY += 1;
+                    if (isShiftDown && !isPanning) moveY -= 1;
 
                     editorCamX += moveX * panSpeed;
+                    editorCamY += moveY * panSpeed;
                     editorCamZ += moveZ * panSpeed;
+
+                    if (editorCamY < 0) editorCamY = 0;
+                    if (editorCamY > 128) editorCamY = 128;
 
                     let camXZ = Math.cos(editorCamPhi) * camDistance;
                     let camY = Math.sin(editorCamPhi) * camDistance;
                     
                     camera.position.set(
                         editorCamX + Math.sin(editorCamTheta) * camXZ,
-                        camY,
+                        editorCamY + camY,
                         editorCamZ + Math.cos(editorCamTheta) * camXZ
                     );
-                    camera.lookAt(editorCamX, 0, editorCamZ);
+                    camera.lookAt(editorCamX, editorCamY, editorCamZ);
 
-                    dirLight.position.set(editorCamX - 20, 30, editorCamZ + 20);
-                    dirLight.target.position.set(editorCamX, 0, editorCamZ);
+                    dirLight.position.set(editorCamX - 20, editorCamY + 30, editorCamZ + 20);
+                    dirLight.target.position.set(editorCamX, editorCamY, editorCamZ);
                     dirLight.target.updateMatrixWorld();
                 }
 
@@ -1636,11 +2001,11 @@
                 let bX = nextX - Math.sin(angle)*0.6;
                 let bZ = nextZ - Math.cos(angle)*0.6;
 
-                let cY = getTerrainHeight(nextX, nextZ, playerGroup.position.y);
+                let cY_lookahead = getTerrainHeight(nextX, nextZ, playerGroup.position.y);
                 let fY_lookahead = getTerrainHeight(fX, fZ, playerGroup.position.y);
                 let bY_lookahead = getTerrainHeight(bX, bZ, playerGroup.position.y);
 
-                let nextTerrainY = Math.max(cY, fY_lookahead, bY_lookahead);
+                let nextTerrainY = Math.max(cY_lookahead, fY_lookahead, bY_lookahead);
                 let blockedByWall = (nextTerrainY - playerGroup.position.y > 0.6); 
 
                 if (!checkCollisions(nextX, nextZ) && !blockedByWall) {
@@ -1653,26 +2018,57 @@
                     }
                 }
 
-                let terrainUnder = getTerrainHeight(playerGroup.position.x, playerGroup.position.z, playerGroup.position.y);
+                // --------------------------------------------------------------------------
+                // VEHICLE GROUNDING PHYSICS UPGRADE
+                // --------------------------------------------------------------------------
                 
-                if (playerGroup.position.y > terrainUnder + 0.01) {
+                // Track exact terrain directly under BOTH wheels
+                let curFX = playerGroup.position.x + Math.sin(angle)*0.6;
+                let curFZ = playerGroup.position.z + Math.cos(angle)*0.6;
+                let curBX = playerGroup.position.x - Math.sin(angle)*0.6;
+                let curBZ = playerGroup.position.z - Math.cos(angle)*0.6;
+
+                let fY = getTerrainHeight(curFX, curFZ, playerGroup.position.y);
+                let bY = getTerrainHeight(curBX, curBZ, playerGroup.position.y);
+                let cY_curr = getTerrainHeight(playerGroup.position.x, playerGroup.position.z, playerGroup.position.y);
+
+                // This guarantees neither the front, back, or center of the bike clips into the floor
+                let terrainUnder = Math.max(cY_curr, (fY + bY) / 2);
+
+                let topBlock = null;
+                if (gameState !== 'SANDBOX' && gameState !== 'ENDLESS') {
+                    let pX = Math.floor(playerGroup.position.x);
+                    let pZ = Math.floor(playerGroup.position.z);
+                    let startY = Math.min(128, Math.floor(playerGroup.position.y + 1.5));
+                    for (let y = startY; y >= 0; y--) {
+                        let cell = editorData.get(`${pX},${y},${pZ}`);
+                        const solidBlocks = ['grass', 'grass_full', 'dirt', 'wood_planks', 'stone', 'dark_stone'];
+                        if (cell && (solidBlocks.includes(cell.type) || cell.type.includes('ramp'))) {
+                            topBlock = cell; break;
+                        }
+                    }
+                }
+
+                // Smooth ride vs Falling
+                if (playerGroup.position.y > terrainUnder + 0.05) {
                     playerGroup.userData.vy -= 0.015; 
+                    playerGroup.position.y += playerGroup.userData.vy;
                 } else {
                     let deltaY = terrainUnder - playerGroup.position.y;
-                    playerGroup.position.y = terrainUnder;
+                    playerGroup.position.y = terrainUnder; // Snap strictly to surface
                     
-                    let extraBoost = 1.0;
-                    let pX = Math.floor(playerGroup.position.x); 
-                    let pY = Math.floor(playerGroup.position.y);
-                    let pZ = Math.floor(playerGroup.position.z);
-                    let currCell = editorData.get(`${pX},${pY},${pZ}`);
-                    if (currCell && currCell.type === 'ramp_jump') extraBoost = 1.4;
-
-                    if (deltaY > 0) playerGroup.userData.vy = Math.min(0.5, Math.max(playerGroup.userData.vy, deltaY * extraBoost));
-                    else playerGroup.userData.vy = 0;
+                    if (deltaY > 0) {
+                        let isJumpRamp = topBlock && topBlock.type.includes('ramp_jump') && topBlock.isLast !== false;
+                        if (isJumpRamp) {
+                            playerGroup.userData.vy = deltaY * 1.5 + 0.05; // Force Kick
+                            playerGroup.position.y += playerGroup.userData.vy; 
+                        } else {
+                            playerGroup.userData.vy = deltaY; // Track momentum purely for driving off the top
+                        }
+                    } else {
+                        if (playerGroup.userData.vy < 0) playerGroup.userData.vy = 0;
+                    }
                 }
-                
-                playerGroup.position.y += playerGroup.userData.vy;
 
                 if (playerGroup.position.y < terrainUnder) {
                     playerGroup.position.y = terrainUnder; playerGroup.userData.vy = 0;
@@ -1680,7 +2076,7 @@
 
                 if (playerGroup.position.y < -10) {
                     if (gameState === 'PLAY_CUSTOM') {
-                        let sy = getTerrainHeight(0,0,20);
+                        let sy = getTerrainHeight(0,0,128);
                         playerGroup.position.set(0, sy < -5 ? 5 : sy, 0);
                         playerGroup.userData.vy = 0;
                         speed = 0;
@@ -1689,13 +2085,18 @@
                     }
                 }
 
-                let fY = getTerrainHeight(playerGroup.position.x + Math.sin(angle)*0.6, playerGroup.position.z + Math.cos(angle)*0.6, playerGroup.position.y);
-                let bY = getTerrainHeight(playerGroup.position.x - Math.sin(angle)*0.6, playerGroup.position.z - Math.cos(angle)*0.6, playerGroup.position.y);
+                // --------------------------------------------------------------------------
+                // VEHICLE PITCH (ROTATION) UPGRADE
+                // --------------------------------------------------------------------------
+
+                // If a wheel hangs off an edge, we calculate the pitch as if it droops down realistically
+                fY = Math.max(fY, playerGroup.position.y - 1.0);
+                bY = Math.max(bY, playerGroup.position.y - 1.0);
                 
                 if (playerGroup.position.y > terrainUnder + 0.1) {
                     wrapper.rotation.x += (0 - wrapper.rotation.x) * 0.05; 
                 } else {
-                    let targetPitch = Math.atan2(fY - bY, 1.2);
+                    let targetPitch = Math.atan2(bY - fY, 1.2);
                     wrapper.rotation.x += (targetPitch - wrapper.rotation.x) * 0.2;
                 }
 
@@ -1791,7 +2192,3 @@
     </script>
 </body>
 </html>
-
-
-```
-
